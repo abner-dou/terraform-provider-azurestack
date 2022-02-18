@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/go-azure-helpers/lang/pointer"
+
 	"github.com/hashicorp/terraform-provider-azurestack/internal/clients"
 	"github.com/hashicorp/terraform-provider-azurestack/internal/services/storage/parse"
 	"github.com/hashicorp/terraform-provider-azurestack/internal/tf/acceptance"
@@ -57,7 +58,11 @@ func TestAccStorageAccount_requiresImport(t *testing.T) {
 				check.That(data.ResourceName).ExistsInAzure(r),
 			),
 		},
-		data.RequiresImportErrorStep(r.requiresImport),
+		{
+			Config:             r.requiresImport(data),
+			ExpectNonEmptyPlan: true,
+			//ExpectError: RequiresImportError(td.ResourceType),
+		},
 	})
 }
 
@@ -203,9 +208,29 @@ resource "azurestack_storage_account" "test" {
 }
 
 func (r StorageAccountResource) requiresImport(data acceptance.TestData) string {
-	template := r.basic(data)
 	return fmt.Sprintf(`
-%s
+provider "azurestack" {
+  features {}
+}
+
+resource "azurestack_resource_group" "test" {
+  name     = "acctestRG-storage-%d"
+  location = "%s"
+}
+
+resource "azurestack_storage_account" "test" {
+  name                = "unlikely23exst2acct%s"
+  resource_group_name = azurestack_resource_group.test.name
+
+  location                 = azurestack_resource_group.test.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+
+  tags = {
+    environment = "production"
+  }
+}
+
 
 resource "azurestack_storage_account" "import" {
   name                     = azurestack_storage_account.test.name
@@ -213,8 +238,11 @@ resource "azurestack_storage_account" "import" {
   location                 = azurestack_storage_account.test.location
   account_tier             = azurestack_storage_account.test.account_tier
   account_replication_type = azurestack_storage_account.test.account_replication_type
+  tags = {
+    environment = "development"
+  }
 }
-`, template)
+`, data.RandomInteger, data.Locations.Primary, data.RandomString)
 }
 
 func (r StorageAccountResource) premium(data acceptance.TestData) string {
